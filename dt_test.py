@@ -17,3 +17,5 @@ print(last_dt)
 print(last_dt+ delta_dt)
 # datetime.datetime.strptime(str(last_dt+ delta_dt), '%Y%m%d').strftime('%m/%d')
 print((last_dt+ delta_dt).strftime('%Y/%m/%d'))
+
+print(df[0:-2])

@@ -1,4 +1,4 @@
-# candle 차트 GUI display
+# GUI display - candle chart 
 
 * 실행
 

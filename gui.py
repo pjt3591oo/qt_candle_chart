@@ -3,6 +3,7 @@ import sys, random
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QVBoxLayout, QSizePolicy, QMessageBox, QWidget, QPushButton
 from PyQt5.QtGui import QIcon
 from PyQt5 import uic
+from PyQt5.QtCore import pyqtSlot
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -14,6 +15,9 @@ from mpl_finance import candlestick_ohlc
 import pandas as pd
 import numpy as np
 import datetime
+from datetime import timedelta
+
+from upbit import Upbit
 
 form_class = uic.loadUiType("main.ui")[0]
 
@@ -21,29 +25,76 @@ class App(QMainWindow, form_class):
   def __init__(self):
     super().__init__()
     self.setupUi(self)
-
     self.initUI()
     self.show()
+    
+    self.upbit = Upbit()
+    self.upbit.update_signal.connect(self.update)
+    
+    self.upbit.start() # 해당 쓰레드의 run 메서드 호출 
 
   def initUI(self):
     
-    static_canvas =  CoinChart("BTC")  #FigureCanvas(Figure(figsize=(5, 3)))
-    static_canvas1 = CoinChart("EOS") #FigureCanvas(Figure(figsize=(5, 3)))
-    dynamic_canvas = CoinChart("ETH") #FigureCanvas(Figure(figsize=(5, 3)))
+    self.BTC_chart =  CoinChart("BTC") #FigureCanvas(Figure(figsize=(5, 3)))
+    self.EOS_chart = CoinChart("EOS")  #FigureCanvas(Figure(figsize=(5, 3)))
+    self.ETH_chart = CoinChart("ETH")  #FigureCanvas(Figure(figsize=(5, 3)))
     
     graph_layout = QVBoxLayout(self.coin_graphs) # UI로 생성한 위젯을 레이아웃으로 설정
-    graph_layout.addWidget(static_canvas)
-    graph_layout.addWidget(static_canvas1)
-    graph_layout.addWidget(dynamic_canvas)
+    graph_layout.addWidget(self.BTC_chart)
+    graph_layout.addWidget(self.EOS_chart)
+    graph_layout.addWidget(self.ETH_chart)
 
+  @pyqtSlot(dict)
+  def update(self, data):
+    code = data['code'].split('-')[1]
+    if code == "BTC": 
+      self.BTC_chart.updateData(data)
+    elif code == "EOS": 
+      self.EOS_chart.updateData(data)
+    elif code == "ETH": 
+      self.ETH_chart.updateData(data)
 
 class CoinChart(FigureCanvas):
   def __init__(self, coin, parent=None, width=5, height=4, dpi=100):
-    print(parent, width, height, dpi)
     self.graph_init(parent)
     self.data_init(coin)
     self.plot(coin)
-  
+    self.cnt = 99
+  def updateData(self, data):
+    code = data['code'].split('-')[1]
+    self.cnt += 1
+    print(code, self.cnt)
+    last_dt = datetime.datetime.strptime(self.df['date'].iloc[-1], "%Y%m%d")
+    delta_dt = timedelta(days=1)
+    new_date = last_dt+ delta_dt
+    receive_df = pd.DataFrame({
+      "close":[ data['trade_price']],
+      "high": [ data['high_price']],
+      "low":  [data['low_price']],
+      "open": [data['opening_price']],
+      "volume":[data['trade_volume']],
+      "date": [new_date.strftime('%Y%m%d')]
+    })
+    if self.cnt < 3:
+      self.df = pd.concat([self.df[0:-1], receive_df])
+    else:
+      self.cnt = 0
+      self.df = pd.concat([self.df, receive_df])
+
+    self.x = np.arange(len(self.df.index))
+    self.ohlc = self.df[['open', 'high', 'low', 'close']].astype(int).values
+    self.dohlc = np.hstack((np.reshape(self.x, (-1, 1)), self.ohlc))
+
+    self._xticks = []
+    self._xlabels = []
+    
+    for _x, d in zip(self.x, self.df.date.values):
+      self.weekday = datetime.datetime.strptime(str(d), '%Y%m%d').weekday()
+      self._xticks.append(_x)
+      self._xlabels.append(datetime.datetime.strptime(str(d), '%Y%m%d').strftime('%m/%d'))
+
+    self.plot(code)
+
   def data_init(self, coin):
     self.df = pd.DataFrame({
       "close":[11155000, 11156000, 11156000, 11148000, 11141000, 11142000, 11145000],
